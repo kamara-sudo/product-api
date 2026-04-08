@@ -2,11 +2,10 @@
 - name: Setup and deploy Product API
   hosts: target_vm
   become: yes
-
   tasks:
     - name: Mise à jour des paquets et installation de Docker
       apt:
-        name: 
+        name:
           - docker.io
           - mysql-client
         state: present
@@ -18,15 +17,16 @@
         state: started
         enabled: yes
 
-    - name: Pull Docker image of Product API
-      docker_image:
-        name: "sarr3052/product-api:latest"
-        source: pull
-
     - name: Install MySQL Server
       apt:
         name: mysql-server
         state: present
+
+    - name: Start MySQL
+      service:
+        name: mysql
+        state: started
+        enabled: yes
 
     - name: Allow MySQL to listen on all interfaces
       lineinfile:
@@ -35,11 +35,16 @@
         line: 'bind-address = 0.0.0.0'
       notify: Restart MySQL
 
-    - name: Flush handlers to restart MySQL immediately
+    - name: Flush handlers
       meta: flush_handlers
 
     - name: Create database product_db
-      shell: mysql -e "CREATE DATABASE IF NOT EXISTS product_db;"
+      shell: mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS product_db;"
+
+    - name: Pull Docker image of Product API
+      docker_image:
+        name: "amzeekamara/product-api:latest"
+        source: pull
 
     - name: Stop and remove old container if exists
       docker_container:
@@ -49,14 +54,14 @@
     - name: Run Product API Container
       docker_container:
         name: product-api
-        image: "sarr3052/product-api:latest"
+        image: "amzeekamara/product-api:latest"
         state: started
         restart_policy: always
         network_mode: host
         env:
-          SPRING_DATASOURCE_URL: "jdbc:mysql://localhost:3306/product_db"
+          SPRING_DATASOURCE_URL: "jdbc:mysql://localhost:3306/product_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true"
           SPRING_DATASOURCE_USERNAME: "root"
-          SPRING_DATASOURCE_PASSWORD: ""
+          SPRING_DATASOURCE_PASSWORD: "root"
 
     - name: Verification du déploiement
       uri:

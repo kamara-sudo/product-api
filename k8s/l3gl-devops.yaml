@@ -1,0 +1,80 @@
+metadata:
+  name: app-config
+  namespace: devops-l3gl
+data:
+  SPRING_DATASOURCE_URL: jdbc:mysql://mysql-service:3306/productdb
+  SPRING_DATASOURCE_USERNAME: devops
+  SPRING_DATASOURCE_PASSWORD: devops1234
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-api
+  namespace: devops-l3gl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: product-api
+  template:
+    metadata:
+      labels:
+        app: product-api
+    spec:
+      containers:
+        - name: product-api
+          image: <TON_DOCKER_IMAGE>
+          ports:
+            - containerPort: 8086
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SPRING_DATASOURCE_PASSWORD
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-api-service
+  namespace: devops-l3gl
+spec:
+  type: ClusterIP
+  selector:
+    app: product-api
+  ports:
+    - port: 8086
+      targetPort: 8086
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: product-api-ingress
+  namespace: devops-l3gl
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /l3gl
+            pathType: Prefix
+            backend:
+              service:
+                name: product-api-service
+                port:
+                  number: 8086
