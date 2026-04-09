@@ -1,19 +1,30 @@
+---
+# ═══════════════════════════════════════════
+# Product API Kubernetes Configuration
+# Groupe 2 - Kamara - feat/k8s-app
+# Namespace: devops-l3gl
+# ═══════════════════════════════════════════
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: app-config
+  name: product-api-config
   namespace: devops-l3gl
 data:
-  SPRING_DATASOURCE_URL: "jdbc:mysql://mysql-service:3306/productdb?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true"
+  SPRING_DATASOURCE_URL: "jdbc:mysql://mysql-service:3306/productdb"
   SPRING_DATASOURCE_USERNAME: "devops"
   SPRING_DATASOURCE_PASSWORD: "devops1234"
-  SPRING_APPLICATION_NAME: "product-api"
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+
 ---
+# Deployment Product API
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: product-api
   namespace: devops-l3gl
+  labels:
+    app: product-api
 spec:
   replicas: 1
   selector:
@@ -25,46 +36,35 @@ spec:
         app: product-api
     spec:
       containers:
-        - name: product-api
-          image: amzeekamara/product-api:latest
-          ports:
-            - containerPort: 8086
-          env:
-            - name: SPRING_DATASOURCE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: SPRING_DATASOURCE_URL
-            - name: SPRING_DATASOURCE_USERNAME
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: SPRING_DATASOURCE_USERNAME
-            - name: SPRING_DATASOURCE_PASSWORD
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: SPRING_DATASOURCE_PASSWORD
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "250Mi"
-            limits:
-              cpu: "400m"
-              memory: "500Mi"
-          readinessProbe:
-            httpGet:
-              path: /actuator/health/readiness
-              port: 8086
-            initialDelaySeconds: 60
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: 8086
-            initialDelaySeconds: 90
-            periodSeconds: 10
+      - name: product-api
+        image: sarr3052/product-api:latest
+        ports:
+        - containerPort: 8086
+        envFrom:
+        - configMapRef:
+            name: product-api-config
+        resources:
+          requests:
+            memory: "250Mi"
+            cpu: "200m"
+          limits:
+            memory: "500Mi"
+            cpu: "400m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8086
+          initialDelaySeconds: 90
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8086
+          initialDelaySeconds: 60
+          periodSeconds: 10
+
 ---
+# Service ClusterIP Product API
 apiVersion: v1
 kind: Service
 metadata:
@@ -72,28 +72,31 @@ metadata:
   namespace: devops-l3gl
 spec:
   type: ClusterIP
+  ports:
+  - port: 8086
+    targetPort: 8086
+    protocol: TCP
+    name: http
   selector:
     app: product-api
-  ports:
-    - port: 8086
-      targetPort: 8086
+
 ---
+# Ingress configuration
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: product-api-ingress
   namespace: devops-l3gl
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
 spec:
-  ingressClassName: nginx
   rules:
-    - http:
-        paths:
-          - path: /l3gl
-            pathType: Prefix
-            backend:
-              service:
-                name: product-api-service
-                port:
-                  number: 8086
+  - http:
+      paths:
+      - path: /l3gl/(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: product-api-service
+            port:
+              number: 8086

@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════════
+# GitLab CI/CD Pipeline - Groupe 2 (Product API)
+# ═══════════════════════════════════════════
+
+image: maven:3.9.6-eclipse-temurin-17
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+
+cache:
+  paths:
+    - .m2/repository
+
+stages:
+  - test
+  - build
+  - docker
+
+# 1. Job de Test
+test:
+  stage: test
+  script:
+    - mvn test
+  only:
+    - develop
+
+# 2. Job de Build (Génération du JAR)
+build:
+  stage: build
+  script:
+    - mvn clean package -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 hour
+  only:
+    - develop
+
+# 3. Job Docker (Build et Push sur Docker Hub)
+docker:
+  stage: docker
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    - docker build -t $DOCKER_IMAGE:latest .
+    - docker push $DOCKER_IMAGE:latest
+  only:
+    - develop
