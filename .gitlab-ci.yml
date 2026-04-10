@@ -17,12 +17,14 @@ stages:
   - test
   - build
   - docker
+  - deploy
 
 # 1. Job de Test
 test:
   stage: test
   script:
-    - mvn test
+    - cd product-core && mvn install -DskipTests # Build core library first
+    - cd product-api && mvn test
   only:
     - develop
 
@@ -30,10 +32,11 @@ test:
 build:
   stage: build
   script:
-    - mvn clean package -DskipTests
+    - cd product-core && mvn install -DskipTests # Build core library first
+    - cd product-api && mvn clean package -DskipTests
   artifacts:
     paths:
-      - target/*.jar
+      - product-api/target/*.jar
     expire_in: 1 hour
   only:
     - develop
@@ -46,7 +49,18 @@ docker:
     - docker:24.0.5-dind
   script:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-    - docker build -t $DOCKER_IMAGE:latest .
+    - cd product-api && docker build -t $DOCKER_IMAGE:latest .
     - docker push $DOCKER_IMAGE:latest
+  only:
+    - develop
+
+# 4. Job de Déploiement (Kubernetes)
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl apply -f product-api/k8s/mysql.yaml
+    - kubectl apply -f product-api/k8s/l3gl-devops.yaml
+    - kubectl rollout restart deployment/product-api -n devops-l3gl
   only:
     - develop
