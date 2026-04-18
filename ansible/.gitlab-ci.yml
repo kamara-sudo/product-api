@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════
+# GitLab CI/CD Pipeline - Groupe 2 (Infrastructure & CD)
+# ═══════════════════════════════════════════
+
+image: alpine:latest
+
+stages:
+  - lint
+  - deploy-check
+  - observability
+
+# 1. Job de Lint (Vérification des fichiers YAML)
+lint-k8s:
+  stage: lint
+  before_script:
+    - apk add --no-cache py3-pip
+  script:
+    - find product-api/k8s -name "*.yaml" -exec echo "Checking {}" \;
+  only:
+    - develop
+
+# 2. Job Ansible Lint
+ansible-check:
+  stage: lint
+  before_script:
+    - apk add --no-cache ansible
+  script:
+    - cd product-api/ansible && ansible-playbook playbook.yml --syntax-check
+  only:
+    - develop
+
+# 3. Job Observability Check
+monitoring-check:
+  stage: observability
+  script:
+    - cat product-api/observability/docker-compose.yml | grep "prometheus"
+    - cat product-api/observability/prometheus.yml | grep "scrape_configs"
+  only:
+    - develop

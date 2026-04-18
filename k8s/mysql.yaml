@@ -1,3 +1,19 @@
+---
+# ═══════════════════════════════════════════
+# MySQL Kubernetes Configuration
+# Groupe 2 - Sarr - feat/k8s-mysql
+# Namespace: devops-l3gl
+# ═══════════════════════════════════════════
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-l3gl
+  labels:
+    name: devops-l3gl
+
+---
+# Secret pour les credentials MySQL
 apiVersion: v1
 kind: Secret
 metadata:
@@ -5,27 +21,56 @@ metadata:
   namespace: devops-l3gl
 type: Opaque
 data:
-  MYSQL_ROOT_PASSWORD: ZGV2b3BzMTIzNA==   # devops1234 en base64
-  MYSQL_PASSWORD: ZGV2b3BzMTIzNA==        # devops1234 en base64
+  # Valeurs encodées en base64
+  # productdb -> cHJvZHVjdGRi
+  # devops -> ZGV2b3Bz
+  # devops1234 -> ZGV2b3BzMTIzNA==
+  mysql-database: cHJvZHVjdGRi
+  mysql-user: ZGV2b3Bz
+  mysql-password: ZGV2b3BzMTIzNA==
+  mysql-root-password: ZGV2b3BzMTIzNA==
 
 ---
-
+# ConfigMap pour la configuration MySQL
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mysql-config
   namespace: devops-l3gl
 data:
-  MYSQL_DATABASE: productdb
-  MYSQL_USER: devops
+  my.cnf: |
+    [mysqld]
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_unicode_ci
+    max_connections=200
+    innodb_buffer_pool_size=128M
+    default-storage-engine=INNODB
 
 ---
+# PersistentVolumeClaim pour MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: devops-l3gl
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard
 
+---
+# Deployment MySQL
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mysql
   namespace: devops-l3gl
+  labels:
+    app: mysql
+    component: database
 spec:
   replicas: 1
   selector:
@@ -35,45 +80,96 @@ spec:
     metadata:
       labels:
         app: mysql
+        component: database
     spec:
       containers:
-        - name: mysql
-          image: mysql:8
-          ports:
-            - containerPort: 3306
-          env:
-            - name: MYSQL_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: mysql-secret
-                  key: MYSQL_ROOT_PASSWORD
-            - name: MYSQL_DATABASE
-              valueFrom:
-                configMapKeyRef:
-                  name: mysql-config
-                  key: MYSQL_DATABASE
-            - name: MYSQL_USER
-              valueFrom:
-                configMapKeyRef:
-                  name: mysql-config
-                  key: MYSQL_USER
-            - name: MYSQL_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: mysql-secret
-                  key: MYSQL_PASSWORD
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-password
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        - name: mysql-config
+          mountPath: /etc/mysql/conf.d/my.cnf
+          subPath: my.cnf
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mysql
+            - -h
+            - localhost
+            - -e
+            - "SELECT 1"
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+      - name: mysql-config
+        configMap:
+          name: mysql-config
 
 ---
-
+# Service ClusterIP MySQL
 apiVersion: v1
 kind: Service
 metadata:
   name: mysql-service
   namespace: devops-l3gl
+  labels:
+    app: mysql
+    component: database
 spec:
   type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: mysql
   selector:
     app: mysql
-  ports:
-    - port: 3306
-      targetPort: 3306
+    component: database

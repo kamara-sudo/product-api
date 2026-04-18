@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 10s # Comme demandé dans les consignes du professeur
+
+scrape_configs:
+  - job_name: 'product-api'
+    metrics_path: '/l3gl/actuator/prometheus'
+    static_configs:
+      - targets: ['100.100.146.41:80'] # IP Tailscale de Kamara (VM1) via Nginx Proxy
